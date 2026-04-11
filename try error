@@ -1,0 +1,278 @@
+document.addEventListener("DOMContentLoaded", function () {
+    displayNew();
+    // displaySofa();
+    // displayCenterTable();
+    // updateCartCounter();
+});
+//web API's
+const newApi="http://localhost:55801/api/HomePage/GetNewArrival";
+const cartApi="http://localhost:55801/api/Cart";
+
+
+///For HOME PAGE New Arrivals
+//display function 
+function displayNew() {
+    let container = document.getElementById("newArrival"); 
+    let htmlContent = "";
+    $.ajax({
+        url:newApi,
+        type:"GET",
+        success:(newArrival)=>{
+            newArrival.forEach((item, index) => {
+        htmlContent += `
+        <div class="imges">
+            <img src="${item.Image}" alt="${item.ProdName}" loading="lazy">
+            <div class="imgprop">
+                <p class="img-description">${item.Description}</p>
+                <div class="star-container">⭐⭐⭐⭐⭐</div>
+                <div><i class="fa-solid fa-indian-rupee-sign"></i> ${item.Price}.00</div>
+                <button class="btn-add" onclick="addToCart(${item.ProdID})">Add To Cart</button>
+            </div>
+        </div>
+        `;
+        })
+        container.innerHTML = htmlContent; // Inject HTML dynamically
+
+    },
+    error:(err)=>{
+          console.log(" Error: "+err);
+    }
+        
+    });
+}
+function insertCart(product){
+     $.ajax({
+        url:cartApi,
+        type:"POST",
+        contentType:"application/json",
+        data:JSON.stringify({
+            UserEmail: sessionStorage.getItem('userEmail'),
+            ProdID: product.ProdID,
+            Qty: 1,
+            Price: product.Price
+        }),
+          success: () => alert("Product Addeed to Cart!!"),
+        error: (err) => console.log(err)
+
+    });
+
+}
+function updateCart(item){
+    $.ajax({
+        url: cartApi,
+        type: "PUT",
+        contentType: "application/json",
+        data: JSON.stringify(item),
+        success: () => alert("Product Added to Cart!!"),
+        error: (err) => console.log(err)
+    });
+}
+function addToCart(index,items) {
+   
+    const product = items[index];
+        var userID = sessionStorage.getItem('userEmail');
+                if (userID) {
+                    $.ajax({
+                        url:cartApi+"/"+userID,
+                        type:"GET",
+                        success:(cart)=>{ 
+                            let existing = cart.find(c =>c.UserName == userID && c.ProdID == product.ProdID);
+                                if (existing) {
+                                    //  update
+                                    existing.Qty += 1;
+                                    existing.Price = existing.Qty * product.Price;
+                                    updateCart(existing);
+                                } else {
+                                    //  insert
+                                    insertCart(product);
+                                }
+                            },
+                        error:(err) => console.log(err)
+                });
+                }else{
+                    alert('User not logged in ');
+                    // Navigate to a new page
+                    window.location.href = './Login.html';
+                    return; // Exit if UserID is not set
+                }
+            }
+                
+
+   ////
+using System;
+using System.Collections.Generic;
+using System.Configuration;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Web.Http;
+using WebAPIProject.Models;
+
+namespace WebAPIProject.Controllers
+{
+    public class CartController : ApiController
+    {
+
+        string str = ConfigurationManager.ConnectionStrings["MyCon"].ConnectionString;
+        [HttpGet]
+        public List<Cart> GetUsers(string name)
+        {
+            List<Cart> cart = new List<Cart>();
+            using (SqlConnection con = new SqlConnection(str))
+            {
+                string query = @"Select c.*,UserEmail from Cart c Inner Join UserDetails u on c.UserID=u.UserID where u.UserEmail=@name";
+               
+                SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddWithValue("@name", name);
+                con.Open();
+                SqlDataReader rdr = cmd.ExecuteReader();
+                while (rdr.Read())
+                {
+                    Cart c = new Cart();
+                    c.CartID = Convert.ToInt32(rdr["CartID"]);
+                    c.UserID = Convert.ToInt32(rdr["UserID"]);
+                    c.ProdID = Convert.ToInt32(rdr["ProdID"]);
+                    c.Qty = Convert.ToInt32(rdr["CartQty"]);
+                    c.Price = Convert.ToInt32(rdr["Price"]);
+                    cart.Add(c);
+                }
+            }
+            return cart;
+        }
+        [HttpPost]
+        public string InsertCart(Cart c)
+        {
+            string res = " ";
+            using (SqlConnection con = new SqlConnection(str))
+            {
+                string query = @"Insert Into Cart(UserID, ProdID,,CartQty,Price) values(@uid,@pid,@qty,@price)";
+                SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddWithValue("@uid", c.UserID);
+                cmd.Parameters.AddWithValue("@pid", c.ProdID);
+                cmd.Parameters.AddWithValue("@qty", c.Qty);
+                cmd.Parameters.AddWithValue("@price", c.Price);
+
+
+
+                con.Open();
+                int row = cmd.ExecuteNonQuery();
+                if (row > 0)
+                {
+                    res = "Cart Added!!";
+                }
+                else
+                {
+                    res = "Error Inserting Cart!!";
+                }
+
+            }
+
+            return res;
+        }
+        [HttpPut]
+        public string UpdateCart(Cart c)
+        {
+            using (SqlConnection con = new SqlConnection(str))
+            {
+                string query = @"Update Cart Set UserID=@uid,
+                                ProdID=@pid,CartQty=@qty,Price=@price Where CartID=@cid";
+                SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddWithValue("@cid", c.CartID);
+                cmd.Parameters.AddWithValue("@uid", c.UserID);
+                cmd.Parameters.AddWithValue("@pid", c.ProdID);                
+                cmd.Parameters.AddWithValue("@qty", c.Qty);
+                cmd.Parameters.AddWithValue("@price", c.Price);
+                con.Open();
+                cmd.ExecuteNonQuery();
+            }
+            return "Cart Updated Successfully!!";
+        }
+        [HttpDelete]
+        public string DeleteCart(int id)
+        {
+            using (SqlConnection con = new SqlConnection(str))
+            {
+                string query = "Delete From Cart Where CartID=@id";
+                SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddWithValue("@id", id);
+                con.Open();
+                cmd.ExecuteNonQuery();
+            }
+            return "Cart Deleted Succesfully!!";
+        }
+    }
+}
+//sql 
+
+---form user type
+create table UserType (
+TypeId int identity primary key,
+TypeName varchar(10) unique not null
+);
+
+---user Deatils
+create table UserDetails(
+	UserID int identity primary key,
+    UserName varchar(20) unique not null,
+	UserEmail varchar(50) unique not null,
+    UserPassword varchar(20) not null,
+	TypeId int references UserType(TypeId) on delete cascade not null
+	)
+	select * from UserDetails
+
+---category
+create table Category(
+	categoryId int identity primary key,
+	categoryName varchar(20) unique not null
+	)
+	
+
+--product Table
+create table Product (
+	ProdID int identity primary key,
+	ProdName varchar(50) not null,
+	ProdPrice int not null check(ProdPrice>0),
+    ProdImg varchar(200) not null,
+	ProdDsc varchar(250) not null,
+	ProdQty int not null check(ProdQty>0),
+	categoryId int references Category(categoryId) on delete cascade not null
+	 )
+
+	 select * from Product
+---Bill Table
+create table Bill(
+	BillID int identity primary key,
+	UserID int references UserDetails(UserID) on delete cascade not null
+	)
+
+---Bill Details
+create table BillDetails(
+	BillDetailsID int identity primary key,
+	BillID int references Bill(BillID) on delete cascade not null,
+	ProdID int references Product(ProdID) on delete cascade not null,
+	BillQty int not null check(BillQty>0),
+	BillAmt int not null check(BillAmt>0)
+	);
+	 
+
+	 ----Cart
+
+create table Cart(
+	CartID int identity primary key,
+	UserID int references UserDetails(UserID) on delete cascade not null,
+	ProdID int references Product(ProdID) on delete cascade not null,
+	CartQty int not null check(CartQty>0),
+	Price int not null check(Price>0)
+	)
+
+	SELECT *
+FROM Product
+WHERE ProdID IN (
+    SELECT MAX(ProdID)
+    FROM Product
+    GROUP BY categoryId
+);
+SELECT MIN(ProdID) FROM Product GROUP BY categoryId
+Select c.*,UserEmail from Cart c Inner Join UserDetails u on c.UserID=u.UserID
+
